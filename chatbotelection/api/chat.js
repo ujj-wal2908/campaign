@@ -1,19 +1,19 @@
 // /api/chat.js
-export default async function handler(req, res) {
-  // Set CORS headers
+module.exports = async (req, res) => {
+  // Set CORS headers for all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle preflight requests
+  // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
 
-  // Only allow POST requests
+  // Ensure it's a POST request
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
@@ -23,57 +23,39 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // Get API key from environment variables
     const apiKey = process.env.GEMINI_API_KEY;
-    
     if (!apiKey) {
-      console.error('GEMINI_API_KEY environment variable is not set');
-      return res.status(500).json({ error: 'API configuration error' });
+      console.error('GEMINI_API_KEY environment variable is not set.');
+      return res.status(500).json({ error: 'Server configuration error.' });
     }
 
-    // Call Gemini API
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+    const apiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: message
-          }]
-        }]
-      })
+        contents: [{ parts: [{ text: message }] }]
+      }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API error:', response.status, errorText);
-      return res.status(response.status).json({ 
-        error: `API request failed: ${response.status}` 
-      });
+    if (!apiResponse.ok) {
+      const errorText = await apiResponse.text();
+      console.error('Gemini API Error:', apiResponse.status, errorText);
+      return res.status(apiResponse.status).json({ error: `Failed to get response from AI service. Status: ${apiResponse.status}` });
     }
 
-    const data = await response.json();
-    
-    // Check if response has the expected structure
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      console.error('Unexpected API response structure:', data);
-      return res.status(500).json({ 
-        error: 'Invalid response from AI service' 
-      });
+    const data = await apiResponse.json();
+
+    // More robust check for the response text
+    const botResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!botResponse) {
+      console.error('Invalid response structure from Gemini API:', JSON.stringify(data));
+      return res.status(500).json({ error: 'Received an invalid response from the AI service.' });
     }
 
-    const botResponse = data.candidates[0].content.parts[0].text;
-    
-    return res.status(200).json({ 
-      response: botResponse 
-    });
+    return res.status(200).json({ response: botResponse });
 
   } catch (error) {
-    console.error('Server error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error' 
-    });
+    console.error('Internal Server Error:', error);
+    return res.status(500).json({ error: 'An unexpected error occurred on the server.' });
   }
-}
+};
